@@ -1,7 +1,9 @@
 # Decision: raw-only (layer-1-only) ADP package?
 
-**Status: PENDING OWNER DECISION.** This note frames the question; it does not
-change behavior. `adp wrap` still refuses unprocessed dumps (see below).
+**Status: DECIDED 2026-07-24 — NO raw-only package.** Raw data is an *input to
+processing*, not a terminal ADP package. `adp wrap` continues to refuse
+unprocessed dumps (see Decision at the end). The analysis below is kept for the
+record.
 
 ## The case that raised it
 
@@ -68,4 +70,12 @@ until the owner decides, so we never quietly produce a coreless package. If
 adopted, spec the minimal raw-only input contract (identity + timezone source
 from the `ride.yaml` sidecar) and add the manifest marker in the same change.
 
-**PENDING OWNER DECISION.**
+## Decision (2026-07-24)
+
+**No raw-only package.** The owner decided that raw data is the *input to
+processing*, not a terminal package — the whole point of the format is the
+processed layer-2 core. If raw footage exists it is sufficient for the first
+(capture) phase; it is then processed by the producer into a layer-2 package.
+`adp wrap` therefore continues to refuse unprocessed dumps: the path for a raw
+DJI clip is *process it first (→ producer manifest + `derived/`), then wrap* —
+never *wrap a coreless package*. No schema change; `wrap`'s refusal stays as-is.
