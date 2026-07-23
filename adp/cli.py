@@ -2,10 +2,9 @@
 
 Entry point ``adp`` (see ``pyproject.toml`` ``[project.scripts]``).
 
-The two subcommands are **placeholders** in this scaffold so the entry point
-resolves and the surface is documented; the real implementations land in a
-follow-up task. Each currently prints its plan and exits non-zero to make it
-unmistakable that nothing was produced.
+``wrap``     turns an rfr producer ride folder into an ADP-light package.
+``validate`` checks an ADP package (or its manifest) against the canonical
+             schemas and re-verifies content hashes.
 """
 
 from __future__ import annotations
@@ -14,35 +13,35 @@ import argparse
 import sys
 
 from . import ADP_VERSION, __version__
-
-_NOT_IMPLEMENTED = 2
+from .validate import validate_package
+from .wrap import WrapError, wrap
 
 
 def _cmd_wrap(args: argparse.Namespace) -> int:
-    """Wrap producer output into an ADP package (FOLLOW-UP task).
-
-    Planned: read a producer folder (e.g. an rfr ride folder — manifest.json +
-    derived/timeline.parquet + video/ + validation.json), emit
-    ``adp.manifest.json`` plus the layer-2 parts (session, timeline, geo,
-    provenance) and layer-3 clips, resolving each part's location/hash/bytes.
-    """
-    print(f"adp wrap: not implemented yet (input={args.input!r}, out={args.out!r})")
-    print("  Planned: producer folder -> adp.manifest.json + parts[] (session,")
-    print("  timeline, geo, provenance, clips), tiers light/heavy.")
-    return _NOT_IMPLEMENTED
+    try:
+        pkg_dir = wrap(args.input, args.out)
+    except WrapError as e:
+        print(f"adp wrap: {e}", file=sys.stderr)
+        return 1
+    print(f"adp wrap: wrote {pkg_dir}")
+    return 0
 
 
 def _cmd_validate(args: argparse.Namespace) -> int:
-    """Validate an ADP package (or producer folder) against the schemas
-    (FOLLOW-UP task).
-
-    Planned: resolve the manifest, validate every part against its schema in
-    ``schemas/``, verify per-source sha256 hashes and per-column coverage.
-    """
-    print(f"adp validate: not implemented yet (target={args.target!r})")
-    print("  Planned: validate manifest + parts against schemas/, check")
-    print("  per-source sha256 and provenance.canonical coverage.")
-    return _NOT_IMPLEMENTED
+    ok, checks = validate_package(args.target)
+    width = max((len(c.name) for c in checks), default=0)
+    for c in checks:
+        if c.ok:
+            status = "PASS" if not c.soft else "PASS*"
+        else:
+            status = "FAIL"
+        line = f"  [{status:>5}] {c.name:<{width}}"
+        if c.detail:
+            line += f"  {c.detail}"
+        print(line)
+    print(f"adp validate: {'OK' if ok else 'FAILED'} "
+          f"({sum(1 for c in checks if not c.ok and not c.soft)} hard failure(s))")
+    return 0 if ok else 1
 
 
 def build_parser() -> argparse.ArgumentParser:
