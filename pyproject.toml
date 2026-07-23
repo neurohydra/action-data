@@ -27,9 +27,21 @@ dev = [
     "pytest>=8",
     "ruff>=0.5",
 ]
+# Minimal deps to run the test suite (pytest + the schema validator). jsonschema
+# is already a core dependency; it is listed here so `pip install -e .[test]`
+# is self-describing for CI.
+test = [
+    "pytest>=8",
+    "jsonschema>=4.21",
+]
 
 [project.scripts]
 adp = "adp.cli:main"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+addopts = "-ra"
 
 [tool.hatch.build.targets.wheel]
 packages = ["adp"]

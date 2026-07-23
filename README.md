@@ -139,6 +139,42 @@ The JSON Schema files (draft 2020-12) live in [`schemas/`](schemas/); see
 as **parquet** in practice — its schema documents the per-row/per-column
 contract.
 
+## Tests / CI
+
+The suite runs against a small **synthetic** fixture committed under
+[`tests/fixtures/mini-ride/`](tests/fixtures/mini-ride) — a hand-authored rfr
+ride folder (`manifest.json`, `derived/timeline.csv` + `derived/validation.json`,
+stand-in `fit/*.fit` and `video/clip.mp4`). Nothing depends on the private
+`D:/MTB/rides` test corpus or on the network, so it is fully portable and
+CI-safe.
+
+```
+pip install -e .[test]   # pytest + jsonschema
+pytest
+```
+
+What is covered:
+
+- **Schemas** — every file in `schemas/` parses and passes
+  `jsonschema.Draft202012Validator.check_schema` (draft 2020-12 metaschema).
+- **Round-trip** — `wrap` the fixture → `validate` (all checks PASS, 0 hard
+  failures) → `project --to ridepackage-v0`; the projected `clips[]` is
+  byte-identical to the fixture's, `timeline.rows` matches the CSV row count,
+  and the LT v0 contract verifier reports MATCH.
+- **Timeline contract** — a row missing `time_utc` fails; nullable `lat`/`lon`
+  pass; `<source>_<metric>` / `<source>_raw` shadow columns validate.
+- **Clips schema** — a well-formed clip validates; malformed ones (missing
+  `offset_s`, bad `direction`, zero duration, unknown field) fail.
+- **Store resolver** — `default` → local path unchanged with no map;
+  `byos:<alias>` fails without a storage map and resolves with one; credentials
+  are referenced by name only (inline secrets are structurally rejected).
+- **Raw-only refusal** — a folder with no `manifest.json` is refused by `wrap`
+  with a clear error and a non-zero CLI exit.
+
+CI ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)) runs on push and
+pull_request across Python 3.11 / 3.12: it installs the package + test deps,
+runs the schema metaschema check, and runs `pytest`.
+
 ## Grounding
 
 The schema is grounded in real producer output from `randomfinnrides-pipeline`:

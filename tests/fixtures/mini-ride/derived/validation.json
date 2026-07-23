@@ -1,0 +1,111 @@
+{
+  "garmin_span": {
+    "start_utc": "2026-07-08T06:00:00+00:00",
+    "end_utc": "2026-07-08T06:00:05+00:00",
+    "seconds": 6,
+    "raw_points": 6
+  },
+  "bosch_span": {
+    "start_utc": "2026-07-08T06:00:00+00:00",
+    "end_utc": "2026-07-08T06:00:05+00:00",
+    "seconds": 6,
+    "raw_points": 5
+  },
+  "canonical": {
+    "lat": {
+      "primary": "garmin.gps",
+      "column": "lat",
+      "fallback": null,
+      "span_start_utc": "2026-07-08T06:00:00+00:00",
+      "span_end_utc": "2026-07-08T06:00:05+00:00",
+      "span_s": 6,
+      "missing_s": 1,
+      "coverage_pct": 83.3,
+      "longest_gap_s": 1,
+      "gaps": [
+        {
+          "start_utc": "2026-07-08T06:00:02+00:00",
+          "end_utc": "2026-07-08T06:00:03+00:00",
+          "seconds": 1,
+          "kind": "field_missing"
+        }
+      ]
+    },
+    "lon": {
+      "primary": "garmin.gps",
+      "column": "lon",
+      "fallback": null,
+      "span_start_utc": "2026-07-08T06:00:00+00:00",
+      "span_end_utc": "2026-07-08T06:00:05+00:00",
+      "span_s": 6,
+      "missing_s": 1,
+      "coverage_pct": 83.3,
+      "longest_gap_s": 1,
+      "gaps": [
+        {
+          "start_utc": "2026-07-08T06:00:02+00:00",
+          "end_utc": "2026-07-08T06:00:03+00:00",
+          "seconds": 1,
+          "kind": "field_missing"
+        }
+      ]
+    },
+    "hr_bpm": {
+      "primary": "garmin.hr",
+      "column": "hr_bpm",
+      "fallback": null,
+      "span_start_utc": "2026-07-08T06:00:00+00:00",
+      "span_end_utc": "2026-07-08T06:00:05+00:00",
+      "span_s": 6,
+      "missing_s": 0,
+      "coverage_pct": 100.0,
+      "longest_gap_s": 0,
+      "gaps": []
+    },
+    "power_w": {
+      "primary": "bosch.power",
+      "column": "power_w",
+      "fallback": null,
+      "span_start_utc": "2026-07-08T06:00:00+00:00",
+      "span_end_utc": "2026-07-08T06:00:05+00:00",
+      "span_s": 6,
+      "missing_s": 1,
+      "coverage_pct": 83.3,
+      "longest_gap_s": 1,
+      "gaps": [
+        {
+          "start_utc": "2026-07-08T06:00:02+00:00",
+          "end_utc": "2026-07-08T06:00:03+00:00",
+          "seconds": 1,
+          "kind": "source_silent"
+        }
+      ]
+    },
+    "moving": {
+      "primary": "bosch.distance",
+      "column": "moving",
+      "fallback": "garmin.speed",
+      "span_start_utc": "2026-07-08T06:00:00+00:00",
+      "span_end_utc": "2026-07-08T06:00:05+00:00",
+      "span_s": 6,
+      "missing_s": 0,
+      "coverage_pct": 100.0,
+      "longest_gap_s": 0,
+      "gaps": []
+    }
+  },
+  "source_overlap_s": 6,
+  "hr_mean_abs_diff_bpm": 1.0,
+  "video_sync": {
+    "clips": [
+      {
+        "file": "clip.mp4",
+        "camera_drift_s": 0.0,
+        "prev_gap_s": null
+      }
+    ]
+  },
+  "warnings": [
+    "bosch.power: coverage 83.3%, 1s missing, 1 gap (source silent)"
+  ]
+}

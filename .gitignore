@@ -16,6 +16,9 @@ dist/
 venv/
 env/
 
+# Test working tree (repo-local temp so video hardlinks stay on one volume)
+.adp-test-tmp/
+
 # Tooling caches
 .pytest_cache/
 .ruff_cache/

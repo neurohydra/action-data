@@ -1,0 +1,89 @@
+{
+  "ride": "mini-ride",
+  "generated_utc": "2026-07-08T06:05:00+00:00",
+  "pipeline_version": "0.1.0",
+  "timezone": "Europe/Helsinki",
+  "sources": {
+    "garmin": {
+      "file_id": {
+        "serial_number": 3500013593,
+        "time_created": "2026-07-08T06:00:00+00:00",
+        "manufacturer": "garmin",
+        "garmin_product": "fenix7_pro_solar",
+        "type": "activity"
+      },
+      "session": {
+        "timestamp": "2026-07-08T06:00:00+00:00",
+        "start_time": "2026-07-08T06:00:00+00:00",
+        "total_elapsed_time": 5.0,
+        "total_timer_time": 5.0,
+        "total_distance": 15.5,
+        "sport_profile_name": "eMTB",
+        "training_load_peak": 12.5,
+        "total_grit": 5.0,
+        "avg_flow": 7.5,
+        "total_calories": 120,
+        "total_ascent": 3,
+        "total_descent": 2,
+        "num_laps": 1,
+        "enhanced_avg_respiration_rate": 28.0,
+        "enhanced_max_respiration_rate": 35.0,
+        "enhanced_min_respiration_rate": 14.0,
+        "sport": "cycling",
+        "sub_sport": "e_bike_mountain",
+        "avg_heart_rate": 140,
+        "max_heart_rate": 158,
+        "total_training_effect": 2.1,
+        "total_anaerobic_training_effect": 0.1
+      }
+    },
+    "bosch": {
+      "file_id": {
+        "type": "activity",
+        "manufacturer": "bosch",
+        "product": 0,
+        "time_created": "2026-07-08T06:00:00+00:00",
+        "serial_number": 716224277
+      },
+      "session": {
+        "sport": "e_biking",
+        "timestamp": "2026-07-08T06:00:00+00:00",
+        "start_time": "2026-07-08T06:00:00+00:00",
+        "total_elapsed_time": 5.0,
+        "avg_cadence": 78,
+        "avg_power": 150,
+        "total_distance": 16.0,
+        "max_cadence": 110,
+        "max_power": 400,
+        "total_ascent": 3,
+        "total_descent": 3
+      }
+    }
+  },
+  "clips": [
+    {
+      "file": "clip.mp4",
+      "start_utc": "2026-07-08T06:00:00+00:00",
+      "start_local": "2026-07-08T09:00:00+03:00",
+      "duration_s": 5.0,
+      "end_utc": "2026-07-08T06:00:05+00:00",
+      "offset_s": 0.0,
+      "recording_start_utc": "2026-07-08T06:00:00+00:00",
+      "width": 3840,
+      "height": 2160,
+      "fps": 29.97,
+      "codec": "hevc",
+      "size_bytes": 1048576
+    }
+  ],
+  "timeline": {
+    "file": "derived/timeline.csv",
+    "rows": 6,
+    "start_utc": "2026-07-08T06:00:00+00:00",
+    "end_utc": "2026-07-08T06:00:05+00:00"
+  },
+  "validation": {
+    "file": "derived/validation.json",
+    "warnings": []
+  }
+}
