@@ -52,7 +52,16 @@ import os
 import shutil
 from pathlib import Path
 
+from . import store
+
 TARGETS = ("ridepackage-v0",)
+
+# Order of keys in an rfr v0 clip, preserved so the projected clips[] is
+# byte-identical to the producer's original manifest.clips[].
+_V0_CLIP_ORDER = (
+    "file", "start_utc", "start_local", "duration_s", "end_utc", "offset_s",
+    "recording_start_utc", "width", "height", "fps", "codec", "size_bytes",
+)
 
 
 class ProjectError(Exception):
@@ -61,13 +70,43 @@ class ProjectError(Exception):
 
 # ── helpers ───────────────────────────────────────────────────────────────────
 
-def _resolve(pkg_dir: Path, key: str) -> Path:
-    p = Path(key)
-    return p if p.is_absolute() else (pkg_dir / key)
+def _part_local(part: dict, storage_map: dict | None, pkg_dir: Path) -> Path:
+    """Local path of a part via the store resolver. The projection needs the
+    bytes on disk, so a remote (non-local) store is a hard error here."""
+    lp = store.resolve_local(part["location"], storage_map=storage_map,
+                             pkg_dir=pkg_dir)
+    if lp is None:
+        raise ProjectError(
+            f"part '{part.get('part')}' is in a remote store "
+            f"({part['location']['store']}); provide a storage map that maps it "
+            "to a local endpoint to project it.")
+    return lp
 
 
 def _load_json(path: Path) -> dict:
     return json.loads(path.read_text(encoding="utf-8"))
+
+
+def _v0_clip(clip: dict) -> dict:
+    """Map one canonical clip (clips.schema) back to an rfr v0 clip, byte-faithful
+    (same keys, same order, same values) so the projected clips[] round-trips."""
+    video = clip.get("video", {})
+    src = {
+        "file": video.get("file"),
+        "start_utc": clip.get("start_utc"),
+        "start_local": clip.get("start_local"),
+        "duration_s": clip.get("duration_s"),
+        "end_utc": clip.get("end_utc"),
+        "offset_s": clip.get("offset_s"),
+        "recording_start_utc": video.get("recording_start_utc"),
+        "width": video.get("width"),
+        "height": video.get("height"),
+        "fps": video.get("fps"),
+        "codec": video.get("codec"),
+        "size_bytes": video.get("size_bytes"),
+    }
+    # emit in canonical v0 order, dropping any field the canonical clip lacked
+    return {k: src[k] for k in _V0_CLIP_ORDER if src.get(k) is not None}
 
 
 def _part_map(manifest: dict) -> dict[str, dict]:
@@ -166,7 +205,8 @@ def build_v0_manifest(pkg_dir: Path, manifest: dict, session: dict,
 # ── entry point ───────────────────────────────────────────────────────────────
 
 def project_ridepackage_v0(pkg: str | Path, out_dir: str | Path | None = None,
-                           ride: str | None = None) -> tuple[Path, dict]:
+                           ride: str | None = None,
+                           storage_map: dict | None = None) -> tuple[Path, dict]:
     """Project an ADP package directory into a RidePackage v0 folder.
 
     Returns (projected_dir, info) where info records what was produced.
@@ -190,12 +230,14 @@ def project_ridepackage_v0(pkg: str | Path, out_dir: str | Path | None = None,
             "producer manifest that declares clips (adp wrap emits clips.json)."
         )
 
-    session = _load_json(_resolve(pkg_dir, parts["session"]["location"]["key"]))
+    session = _load_json(_part_local(parts["session"], storage_map, pkg_dir))
     provenance = (
-        _load_json(_resolve(pkg_dir, parts["provenance"]["location"]["key"]))
+        _load_json(_part_local(parts["provenance"], storage_map, pkg_dir))
         if "provenance" in parts else {"sources": []}
     )
-    clips = _load_json(_resolve(pkg_dir, parts["clips"]["location"]["key"]))
+    # canonical clips (clips.schema) -> byte-faithful v0 clips[]
+    clips_canonical = _load_json(_part_local(parts["clips"], storage_map, pkg_dir))
+    clips = [_v0_clip(c) for c in clips_canonical]
 
     ride = ride or pkg_dir.name
     out = Path(out_dir).resolve() if out_dir else (pkg_dir / "ridepackage-v0")
@@ -205,7 +247,7 @@ def project_ridepackage_v0(pkg: str | Path, out_dir: str | Path | None = None,
 
     # ── timeline: copy the small layer-2 table (primary + csv fallback) ────────
     tl_part = parts["timeline"]
-    tl_src = _resolve(pkg_dir, tl_part["location"]["key"])
+    tl_src = _part_local(tl_part, storage_map, pkg_dir)
     derived = out / "derived"
     derived.mkdir(parents=True, exist_ok=True)
 
@@ -221,8 +263,9 @@ def project_ridepackage_v0(pkg: str | Path, out_dir: str | Path | None = None,
     if tl_fmt == "csv":
         csv_dst = derived / primary_name  # primary already is the csv
     elif fb and fb.get("format") == "csv":
-        fb_src = _resolve(pkg_dir, fb["key"])
-        if fb_src.is_file():
+        fb_loc = {"store": tl_part["location"]["store"], "key": fb["key"]}
+        fb_src = store.resolve_local(fb_loc, storage_map=storage_map, pkg_dir=pkg_dir)
+        if fb_src is not None and fb_src.is_file():
             shutil.copy2(fb_src, csv_dst)
 
     timeline_rel = f"derived/{primary_name}"
@@ -253,8 +296,14 @@ def project_ridepackage_v0(pkg: str | Path, out_dir: str | Path | None = None,
                                   "reason": "no matching video part"})
             info["notes"].append(f"clip {fname}: no video part in package")
             continue
-        src = _resolve(pkg_dir, vp["location"]["key"])
+        src = store.resolve_local(vp["location"], storage_map=storage_map,
+                                  pkg_dir=pkg_dir)
         dst = out / "video" / fname
+        if src is None:
+            info["video"].append({"file": fname, "method": "skipped",
+                                  "reason": f"remote store {vp['location']['store']}"})
+            info["notes"].append(f"clip {fname}: video in remote store, not linked")
+            continue
         if not src.is_file():
             info["video"].append({"file": fname, "method": "skipped",
                                   "reason": f"source missing: {src}"})

@@ -64,9 +64,12 @@ FIT files plus the raw video segments.)
 
 ## Schema findings
 
-No schema was strictly *blocked* by the real data, so **no schema change was
-made** and there is no `CHANGELOG.md`. Three observations are parked for
-morning review:
+> **Update (hardening pass).** Findings 1 and 3 below have since been actioned;
+> see the resolution notes inline and `CHANGELOG.md`. Finding 2 needed no change.
+
+No schema was strictly *blocked* by the real data at the time of this koeajo, so
+no schema change was made in this pass. Three observations were parked for
+review:
 
 1. **Unprocessed ride (`2026-07-22_lohjanharjun-mtb-2`).** It has only
    `ride.yaml` + an 11 GB DJI `.MP4`; `fit/` is empty and there is no
@@ -78,6 +81,8 @@ morning review:
    that has been captured but not yet refined? The manifest schema technically
    permits it (no `session` part is required), but emitting one would advertise
    an ADP package with no layer-2 core, which may be misleading. Not guessed.
+   **→ Resolved into a decision note (`docs/decisions/raw-only-package.md`),
+   flagged PENDING OWNER DECISION. `wrap`'s refusal is unchanged.**
 
 2. **Missing per-ride source (`2026-07-20_kalliolle`).** The Bosch unit recorded
    no HR that ride, so there is no `bosch_hr_bpm` column and no `bosch.hr`
@@ -95,6 +100,9 @@ morning review:
    `hr_mean_abs_diff_bpm` / `source_overlap_s` is **ambiguous** (own object vs.
    overloading `dual_hr_anchor`, which already allows extra properties), so it
    is parked rather than guessed. These facts are currently dropped by `wrap`.
+   **→ Resolved: a dedicated `provenance.diagnostics` block now homes
+   `source_overlap_s`, `hr_mean_abs_diff_bpm`, `video_sync` and `warnings`, and
+   `wrap` carries them from `validation.json`.**
 
 ## Approximations made
 

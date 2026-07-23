@@ -22,8 +22,15 @@ from .project import (
     project_ridepackage_v0,
     verify_ridepackage_v0,
 )
+from .store import StoreResolutionError, load_storage_map
 from .validate import validate_package
 from .wrap import WrapError, wrap
+
+
+def _load_map(path):
+    if not path:
+        return None
+    return load_storage_map(path)
 
 
 def _cmd_wrap(args: argparse.Namespace) -> int:
@@ -37,7 +44,12 @@ def _cmd_wrap(args: argparse.Namespace) -> int:
 
 
 def _cmd_validate(args: argparse.Namespace) -> int:
-    ok, checks = validate_package(args.target)
+    try:
+        smap = _load_map(getattr(args, "storage_map", None))
+    except StoreResolutionError as e:
+        print(f"adp validate: {e}", file=sys.stderr)
+        return 2
+    ok, checks = validate_package(args.target, storage_map=smap)
     width = max((len(c.name) for c in checks), default=0)
     for c in checks:
         if c.ok:
@@ -59,8 +71,10 @@ def _cmd_project(args: argparse.Namespace) -> int:
               file=sys.stderr)
         return 2
     try:
-        out_dir, info = project_ridepackage_v0(args.pkg, args.out, args.ride)
-    except ProjectError as e:
+        smap = _load_map(getattr(args, "storage_map", None))
+        out_dir, info = project_ridepackage_v0(args.pkg, args.out, args.ride,
+                                               storage_map=smap)
+    except (ProjectError, StoreResolutionError) as e:
         print(f"adp project: {e}", file=sys.stderr)
         return 1
     print(f"adp project: wrote {out_dir}")
@@ -107,6 +121,9 @@ def build_parser() -> argparse.ArgumentParser:
 
     p_val = sub.add_parser("validate", help="validate an ADP package against the schemas")
     p_val.add_argument("target", help="package directory / manifest / producer folder")
+    p_val.add_argument("--storage-map", default=None,
+                       help="storage map JSON resolving byos:/cold store aliases "
+                            "to endpoints (storage-map.schema.json)")
     p_val.set_defaults(func=_cmd_validate)
 
     p_proj = sub.add_parser(
@@ -122,6 +139,9 @@ def build_parser() -> argparse.ArgumentParser:
                         help="override the v0 ride slug (default: package dir name)")
     p_proj.add_argument("--verify", action="store_true",
                         help="verify the projected folder against the LT v0 contract")
+    p_proj.add_argument("--storage-map", default=None,
+                        help="storage map JSON resolving byos:/cold store aliases "
+                             "to local endpoints (storage-map.schema.json)")
     p_proj.set_defaults(func=_cmd_project)
 
     return parser

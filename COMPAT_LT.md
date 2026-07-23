@@ -174,13 +174,19 @@ primary (hyparquet resolved from `packages/telemetry/node_modules`).
 
 ### Parked for morning (not guessed)
 
-1. **Canonical clips schema.** `clips.json` is emitted verbatim (the rfr v0 clip
-   shape) and is manifest-valid, but there is **no** `clips.schema.json`, so
-   `validate` does not check its payload (integrity-hashed only). Authoring a
-   canonical clip schema is a design decision — which fields generalize across
-   sports (is `codec`/`fps` canonical? does `offset_s` — the video↔telemetry sync
-   offset, the one genuinely producer-computed clip field — belong here or beside
-   `provenance.sources[].clock_sync_offset_s`?). Deferred rather than guessed.
+> **Update (hardening pass):** findings 1 and 3 are now resolved — see the inline
+> notes and `CHANGELOG.md`.
+
+1. **Canonical clips schema.** ~~`clips.json` is emitted verbatim…~~
+   **Resolved.** `schemas/clips.schema.json` now defines a sport-neutral canonical
+   clip; `wrap` maps rfr's clip block onto it (total mapping, nothing dropped);
+   `validate` validates the clips part against it. Decisions taken: the video
+   technical fields are generalized under `video.{…}`, and `offset_s` lives **on
+   the clip** (per-footage video↔telemetry sync) — *not* on
+   `provenance.sources[].clock_sync_offset_s`, which is per-source clock offset.
+   The clips part is now **layer 3**. `project` maps the canonical clips back to a
+   **byte-identical** v0 `clips[]` (verified against the original rfr manifest for
+   every processed ride).
 2. **`generated_utc` semantics.** The projected v0 `generated_utc` is the **ADP
    wrap time**, not the producer's original `manifest.generated_utc`
    (`2026-07-14T08:50:10Z`) — ADP-light carries the producer *version* but not the
@@ -188,11 +194,13 @@ primary (hyparquet resolved from `packages/telemetry/node_modules`).
    `generated_utc`; the value is a valid ISO date-time). Optionally carry the
    producer's original timestamp on the ADP session if faithful provenance of
    *when the producer built its manifest* is wanted. Parked.
-3. **`validation.warnings` dropped.** rfr `validation.json` warnings (e.g. Bosch
-   HR/cadence coverage) are not carried by ADP-light, so the projection emits an
-   empty `warnings: []`. Schema-valid and reader-unused, but lossy. This is the
-   same family as producer-koeajo parked-finding #3 (cross-source quality
-   diagnostics have no first-class ADP home). Parked.
+3. **`validation.warnings` dropped.** ~~rfr `validation.json` warnings are not
+   carried by ADP-light…~~ **Resolved on the ADP side.** The warnings (and the
+   sibling cross-source diagnostics) now travel in `provenance.diagnostics`
+   (`warnings`, `source_overlap_s`, `hr_mean_abs_diff_bpm`, `video_sync`). The v0
+   *projection* still emits an empty `warnings: []` because the LT reader never
+   reads that block; a consumer that wants them reads `provenance.diagnostics`
+   from the light core.
 4. **Ride slug identity.** ADP has no first-class human ride slug; the activity
    is keyed by `session_ref` (UUID). The projection recovers the v0 slug from the
    package directory name. Fine for the local/consumer view; if a stable

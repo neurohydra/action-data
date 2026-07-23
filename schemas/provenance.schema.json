@@ -21,6 +21,55 @@
       "description": "Per canonical timeline column: its provenance and coverage against the source that fed it. Keys are canonical column names (lat, lon, alt_m, speed_ms, hr_bpm, power_w, cadence_rpm, distance_m, moving, grit, flow, ...).",
       "type": "object",
       "additionalProperties": { "$ref": "#/$defs/column_coverage" }
+    },
+    "diagnostics": {
+      "description": "OPTIONAL cross-source merge-quality diagnostics: deterministic refine-time facts about how well the sources agreed when merged onto the canonical timeline. These belong to provenance (they describe the quality of the merge that produced the canonical layer-2 parts), not to a source or a column individually. Grounded in rfr validation.json's top-level cross-source keys.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "source_overlap_s": {
+          "description": "Seconds during which two or more sources overlapped in time (the window in which cross-source agreement could be measured).",
+          "type": "integer",
+          "minimum": 0
+        },
+        "hr_mean_abs_diff_bpm": {
+          "description": "Mean absolute difference in heart rate (bpm) between two sources over their overlap. Absent when fewer than two sources reported HR.",
+          "type": "number",
+          "minimum": 0
+        },
+        "video_sync": {
+          "description": "Per-clip camera-clock agreement against the telemetry timeline.",
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["clips"],
+          "properties": {
+            "clips": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["file"],
+                "properties": {
+                  "file": { "type": "string", "description": "Footage file this sync fact is about." },
+                  "camera_drift_s": {
+                    "description": "Estimated camera-clock drift (s) against the telemetry timeline. null when it could not be estimated.",
+                    "type": ["number", "null"]
+                  },
+                  "prev_gap_s": {
+                    "description": "Gap (s) between the previous clip's end and this clip's start. null for the first clip.",
+                    "type": ["number", "null"]
+                  }
+                }
+              }
+            }
+          }
+        },
+        "warnings": {
+          "description": "Human-readable refine-time merge-quality warnings emitted by the producer (e.g. low per-source coverage). Free text; carried verbatim.",
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      }
     }
   },
   "$defs": {

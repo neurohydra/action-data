@@ -1,0 +1,94 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://action-data.dev/schemas/clips.schema.json",
+  "title": "ADP clips part (layer 3)",
+  "description": "The package's clips part: an array of first-class clip objects. A clip is a layer-3 object that PLACES a piece of footage on the canonical UTC timeline (a time range) and references the video asset it is cut from — it is NOT a copy of the footage. Sport-neutral: nothing here is MTB-specific. Producer video/segment blocks (e.g. rfr's manifest.clips[]) map onto this canonical shape; a consumer can rebuild its own clip list from the light core without re-probing the heavy video. Distinct from enrichment.schema $defs/clip, which models user-authored highlight/annotation clips (possibly multi-range) anchored to the timeline; a clip here is one contiguous footage segment tied to a video asset.",
+  "type": "array",
+  "items": { "$ref": "#/$defs/clip" },
+  "$defs": {
+    "clip": {
+      "title": "Clip",
+      "description": "One footage segment placed on the canonical timeline. Required core: where it sits on the timeline (start_utc/end_utc/duration_s), the video asset it references (video_ref), and the video↔telemetry sync offset (offset_s).",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["video_ref", "start_utc", "end_utc", "duration_s", "offset_s"],
+      "properties": {
+        "clip_id": {
+          "description": "Optional stable id of this clip within the package.",
+          "type": "string"
+        },
+        "video_ref": {
+          "description": "Reference to the video asset this clip is cut from: the `part` name of a role:\"video\" part in the manifest (NOT embedded footage). A consumer resolves it to the actual media via that part's location.",
+          "type": "string"
+        },
+        "start_utc": {
+          "description": "Start of the clip's range on the canonical UTC timeline (= recording_start_utc shifted by offset_s).",
+          "type": "string",
+          "format": "date-time"
+        },
+        "end_utc": {
+          "description": "End of the clip's range on the canonical UTC timeline.",
+          "type": "string",
+          "format": "date-time"
+        },
+        "duration_s": {
+          "description": "Footage duration in seconds. Carried explicitly (not derived from end-start) because producers may report a rounded/independent duration.",
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "start_local": {
+          "description": "OPTIONAL local-time mirror of start_utc (ISO 8601 with offset), a producer convenience derivable from start_utc + the package timezone. Carried when the producer supplies it so consumer views round-trip faithfully.",
+          "type": "string"
+        },
+        "offset_s": {
+          "description": "Video↔telemetry sync offset in seconds: the per-footage alignment of the camera clock onto the canonical timeline (start_utc = recording_start_utc + offset_s). Lives ON THE CLIP because it is per-footage, not a per-source clock property. 0 = camera already aligned.",
+          "type": "number"
+        },
+        "direction": {
+          "description": "OPTIONAL playback direction of the footage relative to the timeline. live-trails uses it (POV forward/reverse); most producers do not. Omit when not applicable.",
+          "type": "string",
+          "enum": ["forward", "reverse"]
+        },
+        "intent": {
+          "description": "OPTIONAL free-text reason the clip exists (e.g. 'full descent', 'rock garden').",
+          "type": "string"
+        },
+        "labels": {
+          "description": "OPTIONAL structured labels/tags.",
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "description": {
+          "description": "OPTIONAL human description.",
+          "type": "string"
+        },
+        "derived_metrics": {
+          "description": "OPTIONAL convenience aggregates computed over the clip's range (open set, e.g. max_speed_ms, avg_hr_bpm).",
+          "type": "object",
+          "additionalProperties": { "type": ["number", "string", "boolean", "null"] }
+        },
+        "video": {
+          "description": "Technical description of the referenced footage, generalized from producer video metadata. Sport-neutral; every field optional so audio-only or non-video sources degrade gracefully.",
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "file": {
+              "description": "Original file name of the footage (the layer-1 artifact video_ref points at).",
+              "type": "string"
+            },
+            "width": { "type": "integer", "exclusiveMinimum": 0 },
+            "height": { "type": "integer", "exclusiveMinimum": 0 },
+            "fps": { "type": "number", "exclusiveMinimum": 0 },
+            "codec": { "type": "string" },
+            "size_bytes": { "type": "integer", "minimum": 0 },
+            "recording_start_utc": {
+              "description": "When the camera started recording (UTC). Distinct from start_utc: start_utc = recording_start_utc + offset_s.",
+              "type": "string",
+              "format": "date-time"
+            }
+          }
+        }
+      }
+    }
+  }
+}

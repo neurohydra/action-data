@@ -73,6 +73,34 @@ A part's bytes live wherever the owner puts them. `location.store` is one of:
 Because every part carries its own `hash` and `bytes`, a package stays verifiable
 and reassemblable no matter which store each part came from.
 
+#### Resolving aliases — the storage map (never in the package)
+
+The manifest carries only the **logical alias**, never an account, bucket URL, or
+credential — so the package leaks nothing about where its owner keeps their bytes.
+A reader turns an alias into a real endpoint with a **storage map**: a separate,
+user-held file (schema: [`schemas/storage-map.schema.json`](schemas/storage-map.schema.json))
+that maps each alias → `{ kind, endpoint, credentials_ref?, … }`. Secrets are
+**never inline** — a store names its credential (`credentials_ref`, e.g. an env
+var or cloud profile), resolved out-of-band.
+
+The reference resolver is [`adp/store.py`](adp/store.py):
+
+- `default` with **no** map → the historical local behavior: the part key is a
+  local path (absolute as-is, relative under the package dir). Default packages
+  work with no map, unchanged.
+- any alias present in the map → resolved via its entry. A `kind: local` entry
+  yields a local filesystem path; remote kinds (`s3`/`r2`/`gcs`/…) yield a URI
+  only (not fetchable by this reference tooling).
+- `byos:<alias>` / `cold` with no map entry → unresolvable (error).
+
+`adp validate` and `adp project` take an optional `--storage-map <file>`; without
+it, default local packages behave exactly as before.
+
+```
+adp validate out/<ride> --storage-map my-stores.json
+adp project  out/<ride> --to ridepackage-v0 --storage-map my-stores.json
+```
+
 ### Packaging tiers
 
 - **`light`** = `{ session, timeline, geo, provenance, clips }` — the shareable,
@@ -91,13 +119,18 @@ and reassemblable no matter which store each part came from.
 
 ## Reference tooling
 
-The `adp` package ships a CLI (entry point `adp`) with two subcommands:
+The `adp` package ships a CLI (entry point `adp`) with three subcommands:
 
-- `adp wrap` — wrap producer output (e.g. an rfr ride folder) into an ADP package.
-- `adp validate` — validate a package (or a producer folder) against the schemas.
-
-> The CLI subcommands are **placeholders** in this initial scaffold; the schema
-> is the deliverable here, and the implementations land in a follow-up task.
+- `adp wrap` — wrap producer output (e.g. an rfr ride folder) into an ADP-light
+  package. Maps the producer's per-segment video block onto canonical clip
+  objects (`clips.schema.json`) and carries cross-source diagnostics into
+  `provenance.diagnostics`.
+- `adp validate` — validate a package against the schemas (manifest, session,
+  provenance, **clips**, timeline) and re-verify content hashes. Takes an
+  optional `--storage-map`.
+- `adp project --to ridepackage-v0` — project a package back into the live-trails
+  RidePackage v0 consumer folder; the canonical clips map back **byte-faithfully**
+  to the v0 `clips[]`. Takes an optional `--storage-map`.
 
 ## Schemas
 

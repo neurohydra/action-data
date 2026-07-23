@@ -1,0 +1,60 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://action-data.dev/schemas/storage-map.schema.json",
+  "title": "ADP storage map",
+  "description": "A user-held mapping from the logical store aliases used in a manifest's parts[].location.store (`default`, `cold`, and each `byos:<alias>`) to a real storage endpoint. This file is NOT part of the package and never travels with it: the manifest carries only logical aliases so it leaks no account, location, or credential. Secrets are NEVER inline — a store references credentials by name only (`credentials_ref`), resolved out-of-band by the reader (env var, keychain handle, cloud profile, etc.).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["version", "stores"],
+  "properties": {
+    "version": {
+      "description": "Storage-map format version.",
+      "type": "string",
+      "pattern": "^[0-9]+\\.[0-9]+$"
+    },
+    "stores": {
+      "description": "Alias -> store. Keys are the aliases used in manifest location.store: the literal `default`, the literal `cold`, and each `<alias>` from a `byos:<alias>` token (the `byos:` prefix is stripped when looking up here).",
+      "type": "object",
+      "minProperties": 1,
+      "propertyNames": {
+        "pattern": "^(default|cold|[a-z0-9][a-z0-9_-]*)$"
+      },
+      "additionalProperties": { "$ref": "#/$defs/store" }
+    }
+  },
+  "$defs": {
+    "store": {
+      "description": "One resolved storage endpoint. `kind: local` endpoints are a filesystem base path the reader can read directly; all other kinds are remote and carry a `credentials_ref` (name of a secret held elsewhere), never the secret itself.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "endpoint"],
+      "properties": {
+        "kind": {
+          "description": "Backend kind. `local` = a filesystem base path; the rest are remote object stores / URLs.",
+          "type": "string",
+          "enum": ["local", "s3", "r2", "gcs", "azure", "http"]
+        },
+        "endpoint": {
+          "description": "Base location. For `local`, a filesystem directory (part keys resolve under it). For remote kinds, the bucket/base URL (e.g. s3://my-bucket, https://host/prefix).",
+          "type": "string"
+        },
+        "region": {
+          "description": "OPTIONAL region for cloud backends.",
+          "type": "string"
+        },
+        "prefix": {
+          "description": "OPTIONAL key prefix prepended to each part key within this store.",
+          "type": "string"
+        },
+        "credentials_ref": {
+          "description": "OPTIONAL name/handle of the credential to use, resolved out-of-band (e.g. an env var name, an AWS profile, a keychain entry). MUST NOT be an inline secret. Omit for public or unauthenticated endpoints.",
+          "type": "string"
+        },
+        "cold": {
+          "description": "OPTIONAL: this store is archival and may need rehydration before its objects are readable.",
+          "type": "boolean"
+        }
+      }
+    }
+  }
+}

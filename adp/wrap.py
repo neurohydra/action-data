@@ -6,8 +6,9 @@ Reads a ride folder (``manifest.json`` + ``derived/validation.json`` +
 
 * ``session.json``     (layer 2, session.schema)
 * ``provenance.json``  (layer 2, provenance.schema)
-* ``clips.json``       (layer 2, role "clips") — the producer's per-segment
-  media/timing records, verbatim, when clips were declared.
+* ``clips.json``       (layer 3, role "clips") — the producer's per-segment
+  video block mapped onto canonical clip objects (clips.schema), when clips
+  were declared.
 * ``adp.manifest.json``(manifest.schema) — indexes those plus the layer-1
   originals (FIT, video) referenced in place, never copied.
 
@@ -147,6 +148,85 @@ _CANON_ALLOWED = {
 }
 
 
+# ── clips (layer 3) ──────────────────────────────────────────────────────────
+
+def _video_ref(index: int, total: int) -> str:
+    """Part name of the video asset for clip ``index`` — mirrors the naming rule
+    used when the manifest declares the video parts (single clip -> 'video',
+    else 'video_<n>'), so a clip's video_ref resolves to its manifest part."""
+    return "video" if total == 1 else f"video_{index + 1}"
+
+
+def build_clips(manifest_in: dict) -> list[dict]:
+    """Map the producer's per-segment video block (rfr manifest.clips[]) onto
+    canonical clip objects (clips.schema). The mapping is total for the rfr
+    shape — every field lands somewhere, nothing is dropped:
+
+        file                -> video.file
+        width/height/fps/                video.width/height/fps/
+          codec/size_bytes/               codec/size_bytes/
+          recording_start_utc             recording_start_utc
+        start_utc/end_utc/duration_s -> clip start_utc/end_utc/duration_s
+        start_local          -> clip start_local (local-time mirror, carried
+                                 verbatim so consumer views round-trip)
+        offset_s             -> clip offset_s (ON THE CLIP: video<->telemetry sync)
+        video_ref            -> synthesized: the manifest video part name
+
+    rfr supplies no direction / intent / labels / description / derived_metrics,
+    so those optional fields are omitted.
+    """
+    clips_in = manifest_in.get("clips", [])
+    total = len(clips_in)
+    out: list[dict] = []
+    for i, c in enumerate(clips_in):
+        video: dict = {}
+        if "file" in c:
+            video["file"] = c["file"]
+        for k in ("width", "height", "fps", "codec", "size_bytes",
+                  "recording_start_utc"):
+            if k in c:
+                video[k] = c[k]
+        clip = {
+            "video_ref": _video_ref(i, total),
+            "start_utc": iso_utc(c["start_utc"]),
+            "end_utc": iso_utc(c["end_utc"]),
+            "duration_s": c["duration_s"],
+            "offset_s": c.get("offset_s", 0.0),
+        }
+        if "start_local" in c:
+            clip["start_local"] = c["start_local"]
+        if video:
+            clip["video"] = video
+        out.append(clip)
+    return out
+
+
+def _build_diagnostics(validation: dict) -> dict:
+    """Carry rfr validation.json's top-level cross-source diagnostics into the
+    provenance.diagnostics block (deterministic refine-time merge-quality
+    facts). Only present keys are included; empty -> {} (caller omits)."""
+    diag: dict = {}
+    if "source_overlap_s" in validation:
+        diag["source_overlap_s"] = int(validation["source_overlap_s"])
+    if validation.get("hr_mean_abs_diff_bpm") is not None:
+        diag["hr_mean_abs_diff_bpm"] = validation["hr_mean_abs_diff_bpm"]
+    vsync = validation.get("video_sync")
+    if isinstance(vsync, dict) and vsync.get("clips") is not None:
+        clips = []
+        for c in vsync["clips"]:
+            entry = {"file": c["file"]}
+            if "camera_drift_s" in c:
+                entry["camera_drift_s"] = c["camera_drift_s"]
+            if "prev_gap_s" in c:
+                entry["prev_gap_s"] = c["prev_gap_s"]
+            clips.append(entry)
+        diag["video_sync"] = {"clips": clips}
+    warnings = validation.get("warnings")
+    if warnings:
+        diag["warnings"] = list(warnings)
+    return diag
+
+
 def build_provenance(manifest: dict, validation: dict, ride_dir: Path,
                      session_ref: str) -> tuple[dict, dict[str, str]]:
     """Return (provenance dict, {source: fit_hash}). The hash map lets the
@@ -193,6 +273,9 @@ def build_provenance(manifest: dict, validation: dict, ride_dir: Path,
         "sources": sources_out,
         "canonical": canonical,
     }
+    diagnostics = _build_diagnostics(validation)
+    if diagnostics:
+        provenance["diagnostics"] = diagnostics
     return provenance, fit_hashes
 
 
@@ -231,13 +314,14 @@ def build_manifest(manifest_in: dict, ride_dir: Path, pkg_dir: Path,
                         "json", bytes_=session_bytes, hash_=session_hash))
     light.append("session")
 
-    # clips index (materialized, light) — the per-segment media/timing block the
-    # producer already knows (start/offset/geometry/codec). Fills the manifest's
-    # schema-reserved role:"clips" slot so the segment metadata travels in the
-    # light core and a consumer can rebuild its clip list without re-probing the
-    # heavy video. Only emitted when the producer declared clips.
+    # clips index (materialized, light) — canonical layer-3 clip objects mapped
+    # from the producer's per-segment video block (start/offset/geometry/codec).
+    # Fills the manifest's schema-reserved role:"clips" slot so the segment
+    # metadata travels in the light core and a consumer can rebuild its clip list
+    # without re-probing the heavy video. Only emitted when the producer declared
+    # clips. Validated against clips.schema.
     if clips_bytes is not None and clips_hash is not None:
-        parts.append(_part("clips", 2, "clips", "default", "clips.json",
+        parts.append(_part("clips", 3, "clips", "default", "clips.json",
                             "json", bytes_=clips_bytes, hash_=clips_hash))
         light.append("clips")
 
@@ -339,13 +423,14 @@ def wrap(ride_folder: str | Path, out_dir: str | Path = "out") -> Path:
     session_path.write_text(json.dumps(session, indent=2), encoding="utf-8")
     prov_path.write_text(json.dumps(provenance, indent=2), encoding="utf-8")
 
-    # clips index: the producer's per-segment media/timing records, materialized
-    # verbatim (no derivation, no renaming) so they travel in the light core.
+    # clips index: producer per-segment video block mapped onto canonical clip
+    # objects (clips.schema) so they travel in the light core and validate.
     clips_bytes = clips_hash = None
-    clips_in = manifest_in.get("clips", [])
-    if clips_in:
+    clips_canonical = build_clips(manifest_in)
+    if clips_canonical:
         clips_path = pkg_dir / "clips.json"
-        clips_path.write_text(json.dumps(clips_in, indent=2), encoding="utf-8")
+        clips_path.write_text(json.dumps(clips_canonical, indent=2),
+                              encoding="utf-8")
         clips_bytes = clips_path.stat().st_size
         clips_hash = sha256_file(clips_path)
 

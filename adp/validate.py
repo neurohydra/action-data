@@ -5,6 +5,7 @@ Checks performed (each PASS/FAIL, non-zero exit on any hard FAIL):
 1. manifest        adp.manifest.json validates against manifest.schema
 2. session         the session part validates against session.schema
 3. provenance      the provenance part validates against provenance.schema
+3b. clips          when present, the clips part validates against clips.schema
 4. timeline        a sample of rows validates against timeline.schema;
                    time_utc present on every sampled row; shadow / _raw
                    columns match the documented <source>_* patterns
@@ -24,6 +25,7 @@ import random
 import re
 from pathlib import Path
 
+from . import store
 from ._util import iso_utc, sha256_file, validator
 
 # canonical (non-shadow) columns allowed bare in a timeline row
@@ -47,16 +49,30 @@ class Check:
         self.soft = soft
 
 
-def _resolve(pkg_dir: Path, key: str) -> Path:
-    p = Path(key)
-    return p if p.is_absolute() else (pkg_dir / key)
+def _part_path(part: dict, storage_map: dict | None, pkg_dir: Path) -> Path | None:
+    """Local filesystem path of a part via the store resolver, or None when the
+    part lives in a remote store (not locally readable)."""
+    return store.resolve_local(part["location"], storage_map=storage_map,
+                               pkg_dir=pkg_dir)
 
 
-def _load_part_json(pkg_dir: Path, parts: dict, name: str):
+def _fallback_path(part: dict, fb: dict, storage_map: dict | None,
+                   pkg_dir: Path) -> Path | None:
+    loc = {"store": part["location"]["store"], "key": fb["key"]}
+    return store.resolve_local(loc, storage_map=storage_map, pkg_dir=pkg_dir)
+
+
+def _load_part_json(pkg_dir: Path, parts: dict, name: str,
+                    storage_map: dict | None = None):
     part = parts.get(name)
     if part is None:
         return None, f"part '{name}' not declared"
-    path = _resolve(pkg_dir, part["location"]["key"])
+    try:
+        path = _part_path(part, storage_map, pkg_dir)
+    except store.StoreResolutionError as e:
+        return None, f"{name} store not resolvable: {e}"
+    if path is None:
+        return None, f"{name} is in a remote store ({part['location']['store']}); not locally readable"
     if not path.is_file():
         return None, f"{name} payload missing at {path}"
     try:
@@ -116,12 +132,20 @@ def _sample_indices(n: int, k: int = 12) -> list[int]:
     return sorted(idx)
 
 
-def _check_timeline(pkg_dir: Path, parts: dict) -> list[Check]:
+def _check_timeline(pkg_dir: Path, parts: dict,
+                    storage_map: dict | None = None) -> list[Check]:
     part = parts.get("timeline")
     if part is None:
         return [Check("timeline", False, "no timeline part declared")]
 
-    path = _resolve(pkg_dir, part["location"]["key"])
+    try:
+        path = _part_path(part, storage_map, pkg_dir)
+    except store.StoreResolutionError as e:
+        return [Check("timeline", False, f"store not resolvable: {e}")]
+    if path is None:
+        return [Check("timeline", True,
+                      f"in remote store ({part['location']['store']}); not "
+                      "locally readable, skipped", soft=True)]
     fmt = part.get("format")
     header = rows = None
 
@@ -143,8 +167,8 @@ def _check_timeline(pkg_dir: Path, parts: dict) -> list[Check]:
         except Exception:
             fb = part.get("fallback")
             if fb and fb.get("format") == "csv":
-                fbp = _resolve(pkg_dir, fb["key"])
-                if fbp.is_file():
+                fbp = _fallback_path(part, fb, storage_map, pkg_dir)
+                if fbp is not None and fbp.is_file():
                     header, rows = _read_rows_csv(fbp)
                     fmt = "csv"  # rows are strings -> csv coercion path
     if header is None:
@@ -195,7 +219,8 @@ def _check_timeline(pkg_dir: Path, parts: dict) -> list[Check]:
 
 # ── integrity + tiers ─────────────────────────────────────────────────────────
 
-def _check_integrity(pkg_dir: Path, parts_list: list[dict]) -> list[Check]:
+def _check_integrity(pkg_dir: Path, parts_list: list[dict],
+                     storage_map: dict | None = None) -> list[Check]:
     checks = []
     hashed = 0
     for part in parts_list:
@@ -207,7 +232,17 @@ def _check_integrity(pkg_dir: Path, parts_list: list[dict]) -> list[Check]:
                                     "no hash (heavy video, hashing skipped)",
                                     soft=True))
             continue
-        path = _resolve(pkg_dir, part["location"]["key"])
+        try:
+            path = _part_path(part, storage_map, pkg_dir)
+        except store.StoreResolutionError as e:
+            checks.append(Check(f"integrity.{name}", False,
+                                f"store not resolvable: {e}"))
+            continue
+        if path is None:
+            checks.append(Check(f"integrity.{name}", True,
+                                f"remote store ({part['location']['store']}); "
+                                "hash not locally verifiable", soft=True))
+            continue
         if not path.is_file():
             checks.append(Check(f"integrity.{name}", False,
                                 f"referenced file missing: {path}"))
@@ -236,7 +271,8 @@ def _check_tiers(manifest: dict) -> Check:
 
 # ── entry point ──────────────────────────────────────────────────────────────
 
-def validate_package(target: str | Path) -> tuple[bool, list[Check]]:
+def validate_package(target: str | Path,
+                     storage_map: dict | None = None) -> tuple[bool, list[Check]]:
     target = Path(target).resolve()
     if target.is_dir():
         pkg_dir = target
@@ -258,11 +294,17 @@ def validate_package(target: str | Path) -> tuple[bool, list[Check]]:
     parts_list = manifest.get("parts", [])
     parts = {p["part"]: p for p in parts_list}
 
-    session, s_err = _load_part_json(pkg_dir, parts, "session")
+    session, s_err = _load_part_json(pkg_dir, parts, "session", storage_map)
     checks.append(_schema_check("session", "session", session, s_err))
 
-    prov, p_err = _load_part_json(pkg_dir, parts, "provenance")
+    prov, p_err = _load_part_json(pkg_dir, parts, "provenance", storage_map)
     checks.append(_schema_check("provenance", "provenance", prov, p_err))
+
+    # clips (layer 3): validate the clips part payload against clips.schema when
+    # present. Absent clips part is fine (not every activity has footage).
+    if "clips" in parts:
+        clips_doc, c_err = _load_part_json(pkg_dir, parts, "clips", storage_map)
+        checks.append(_schema_check("clips", "clips", clips_doc, c_err))
 
     # cross-part: session_ref consistency
     refs = {manifest.get("session_ref")}
@@ -286,8 +328,8 @@ def validate_package(target: str | Path) -> tuple[bool, list[Check]]:
                             f"mismatch: {mism}" if mism else
                             "raw part hashes match provenance sources", soft=True))
 
-    checks.extend(_check_timeline(pkg_dir, parts))
-    checks.extend(_check_integrity(pkg_dir, parts_list))
+    checks.extend(_check_timeline(pkg_dir, parts, storage_map))
+    checks.extend(_check_integrity(pkg_dir, parts_list, storage_map))
     checks.append(_check_tiers(manifest))
 
     ok = all(c.ok or c.soft for c in checks)
