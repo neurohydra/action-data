@@ -6,6 +6,8 @@ Reads a ride folder (``manifest.json`` + ``derived/validation.json`` +
 
 * ``session.json``     (layer 2, session.schema)
 * ``provenance.json``  (layer 2, provenance.schema)
+* ``clips.json``       (layer 2, role "clips") — the producer's per-segment
+  media/timing records, verbatim, when clips were declared.
 * ``adp.manifest.json``(manifest.schema) — indexes those plus the layer-1
   originals (FIT, video) referenced in place, never copied.
 
@@ -217,7 +219,9 @@ def _part(name, layer, role, store, key, fmt, *, bytes_=None, hash_=None,
 def build_manifest(manifest_in: dict, ride_dir: Path, pkg_dir: Path,
                    session_ref: str, session_bytes: int, session_hash: str,
                    prov_bytes: int, prov_hash: str,
-                   fit_hashes: dict[str, str]) -> dict:
+                   fit_hashes: dict[str, str],
+                   clips_bytes: int | None = None,
+                   clips_hash: str | None = None) -> dict:
     parts: list[dict] = []
     light: list[str] = []
     heavy: list[str] = []
@@ -226,6 +230,16 @@ def build_manifest(manifest_in: dict, ride_dir: Path, pkg_dir: Path,
     parts.append(_part("session", 2, "session", "default", "session.json",
                         "json", bytes_=session_bytes, hash_=session_hash))
     light.append("session")
+
+    # clips index (materialized, light) — the per-segment media/timing block the
+    # producer already knows (start/offset/geometry/codec). Fills the manifest's
+    # schema-reserved role:"clips" slot so the segment metadata travels in the
+    # light core and a consumer can rebuild its clip list without re-probing the
+    # heavy video. Only emitted when the producer declared clips.
+    if clips_bytes is not None and clips_hash is not None:
+        parts.append(_part("clips", 2, "clips", "default", "clips.json",
+                            "json", bytes_=clips_bytes, hash_=clips_hash))
+        light.append("clips")
 
     # timeline (referenced in place, light). parquet primary + csv fallback.
     derived = ride_dir / "derived"
@@ -325,11 +339,22 @@ def wrap(ride_folder: str | Path, out_dir: str | Path = "out") -> Path:
     session_path.write_text(json.dumps(session, indent=2), encoding="utf-8")
     prov_path.write_text(json.dumps(provenance, indent=2), encoding="utf-8")
 
+    # clips index: the producer's per-segment media/timing records, materialized
+    # verbatim (no derivation, no renaming) so they travel in the light core.
+    clips_bytes = clips_hash = None
+    clips_in = manifest_in.get("clips", [])
+    if clips_in:
+        clips_path = pkg_dir / "clips.json"
+        clips_path.write_text(json.dumps(clips_in, indent=2), encoding="utf-8")
+        clips_bytes = clips_path.stat().st_size
+        clips_hash = sha256_file(clips_path)
+
     manifest = build_manifest(
         manifest_in, ride_dir, pkg_dir, session_ref,
         session_path.stat().st_size, sha256_file(session_path),
         prov_path.stat().st_size, sha256_file(prov_path),
         fit_hashes,
+        clips_bytes=clips_bytes, clips_hash=clips_hash,
     )
     (pkg_dir / "adp.manifest.json").write_text(
         json.dumps(manifest, indent=2), encoding="utf-8"
