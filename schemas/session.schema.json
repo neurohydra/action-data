@@ -1,0 +1,97 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://action-data.dev/schemas/session.schema.json",
+  "title": "ADP session part (layer 2)",
+  "description": "Refined canonical session descriptor. Generalizes an rfr 'ride' block to any action sport. Carries per-source device-reported aggregates that are NOT re-derivable from the 1 Hz timeline (facts). Carries NO service metadata: no owner, visibility, or status.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["session_ref", "started_utc", "ended_utc", "duration_s", "timezone", "producer", "source_summaries"],
+  "properties": {
+    "session_ref": {
+      "description": "Stable UUID of the logical activity; matches the manifest and every other part.",
+      "type": "string",
+      "format": "uuid"
+    },
+    "started_utc": { "type": "string", "format": "date-time" },
+    "ended_utc": { "type": "string", "format": "date-time" },
+    "duration_s": {
+      "description": "Wall-clock span of the session in seconds (ended - started).",
+      "type": "number",
+      "minimum": 0
+    },
+    "activity_hint": {
+      "description": "Best-guess activity type (e.g. mtb, run, road, snowboard). A HINT for defaults/UX, NOT a locked sport classification. Free text; common values suggested by examples.",
+      "type": "string",
+      "examples": ["mtb", "emtb", "road", "gravel", "run", "trail-run", "snowboard", "ski", "hike"]
+    },
+    "timezone": {
+      "description": "IANA timezone the activity was recorded in.",
+      "type": "string"
+    },
+    "producer": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "version"],
+      "properties": {
+        "name": { "type": "string" },
+        "version": { "type": "string" }
+      }
+    },
+    "source_summaries": {
+      "description": "Per-source device-reported aggregates that the 1 Hz timeline cannot reproduce (calories, training load, grit/flow, laps, respiration, Bosch avg/max power+cadence). Each is provenance-stamped with its originating source. These are FACTS and travel in the package.",
+      "type": "array",
+      "items": { "$ref": "#/$defs/source_summary" }
+    }
+  },
+  "$defs": {
+    "source_summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["source", "metrics"],
+      "properties": {
+        "source": {
+          "description": "Originating source id (e.g. garmin, bosch). Provenance stamp for this summary.",
+          "type": "string"
+        },
+        "device": {
+          "description": "Optional human-readable device descriptor (e.g. 'Garmin fenix7_pro_solar').",
+          "type": "string"
+        },
+        "sport": {
+          "description": "Sport as reported by this device (e.g. cycling / e_biking). Device-native, informational.",
+          "type": "string"
+        },
+        "sub_sport": {
+          "description": "Device-native sub-sport (e.g. e_bike_mountain).",
+          "type": "string"
+        },
+        "metrics": {
+          "description": "Device-reported aggregate metrics. Open set (devices differ). Known keys are documented below; unknown numeric aggregates are permitted.",
+          "type": "object",
+          "properties": {
+            "total_calories": { "type": "number", "description": "kcal" },
+            "training_load": { "type": "number" },
+            "total_grit": { "type": "number", "description": "Garmin Grit (climb difficulty)." },
+            "avg_flow": { "type": "number", "description": "Garmin Flow (descent smoothness)." },
+            "num_laps": { "type": "integer", "minimum": 0 },
+            "avg_respiration_rate": { "type": "number" },
+            "max_respiration_rate": { "type": "number" },
+            "min_respiration_rate": { "type": "number" },
+            "avg_heart_rate": { "type": "number", "description": "bpm" },
+            "max_heart_rate": { "type": "number", "description": "bpm" },
+            "avg_power": { "type": "number", "description": "W (e.g. Bosch)" },
+            "max_power": { "type": "number", "description": "W (e.g. Bosch)" },
+            "avg_cadence": { "type": "number", "description": "rpm (e.g. Bosch)" },
+            "max_cadence": { "type": "number", "description": "rpm (e.g. Bosch)" },
+            "total_distance_m": { "type": "number" },
+            "total_ascent_m": { "type": "number" },
+            "total_descent_m": { "type": "number" },
+            "total_training_effect": { "type": "number" },
+            "total_anaerobic_training_effect": { "type": "number" }
+          },
+          "additionalProperties": { "type": ["number", "string", "boolean", "null"] }
+        }
+      }
+    }
+  }
+}

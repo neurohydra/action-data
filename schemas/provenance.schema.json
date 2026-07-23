@@ -1,0 +1,123 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://action-data.dev/schemas/provenance.schema.json",
+  "title": "ADP provenance part (layer 2)",
+  "description": "Where the canonical timeline came from. Two levels: `sources[]` describes each raw source (device, file, time window, clock-sync, dual-HR anchor, sha256 content hash); `canonical` describes each merged timeline column (which source it came from, gap classification, coverage, longest gap). Grounded in rfr validation.json.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["session_ref", "sources", "canonical"],
+  "properties": {
+    "session_ref": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "sources": {
+      "description": "Per raw source that fed the timeline.",
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/source" }
+    },
+    "canonical": {
+      "description": "Per canonical timeline column: its provenance and coverage against the source that fed it. Keys are canonical column names (lat, lon, alt_m, speed_ms, hr_bpm, power_w, cadence_rpm, distance_m, moving, grit, flow, ...).",
+      "type": "object",
+      "additionalProperties": { "$ref": "#/$defs/column_coverage" }
+    }
+  },
+  "$defs": {
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["source", "hash"],
+      "properties": {
+        "source": {
+          "description": "Source id used as the shadow-column / provenance namespace (e.g. garmin, bosch).",
+          "type": "string"
+        },
+        "device": {
+          "description": "Device descriptor (manufacturer/product/serial), e.g. 'garmin fenix7_pro_solar #3500013593'.",
+          "type": "string"
+        },
+        "file": {
+          "description": "Original file name of the raw source (the layer-1 artifact this provenance points at).",
+          "type": "string"
+        },
+        "window": {
+          "description": "Time window this source actually covers.",
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["start_utc", "end_utc"],
+          "properties": {
+            "start_utc": { "type": "string", "format": "date-time" },
+            "end_utc": { "type": "string", "format": "date-time" },
+            "raw_points": { "type": "integer", "minimum": 0, "description": "Number of raw samples in this source." }
+          }
+        },
+        "clock_sync_offset_s": {
+          "description": "Offset (seconds) applied to align this source's clock onto the canonical UTC timeline. 0 = reference source.",
+          "type": "number"
+        },
+        "dual_hr_anchor": {
+          "description": "Optional cross-source anchor used when two sources both report HR: the correlation lag/quality used to lock their clocks together.",
+          "type": "object",
+          "additionalProperties": true,
+          "properties": {
+            "against": { "type": "string", "description": "Other source id anchored against." },
+            "lag_s": { "type": "number" },
+            "correlation": { "type": "number" }
+          }
+        },
+        "hash": {
+          "description": "sha256 of the raw source's original bytes, algorithm-prefixed 'sha256:<hex>'. Enables dedup, integrity, and duplicate-import detection. REQUIRED per source.",
+          "type": "string",
+          "pattern": "^sha256:[0-9a-fA-F]{64}$"
+        }
+      }
+    },
+    "column_coverage": {
+      "description": "Coverage of one canonical column against its feeding source, with gaps classified as source_silent vs field_missing (grounded in rfr validate.py).",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["source", "coverage_pct"],
+      "properties": {
+        "source": {
+          "description": "Provenance as 'source.field' (e.g. garmin.gps, bosch.power). The source that supplied this canonical column.",
+          "type": "string"
+        },
+        "fallback": {
+          "description": "Optional 'source.field' that fills where the primary is silent (e.g. moving = bosch.distance with garmin.speed fallback). null when the column is a 1:1 passthrough.",
+          "type": ["string", "null"]
+        },
+        "span_start_utc": { "type": "string", "format": "date-time" },
+        "span_end_utc": { "type": "string", "format": "date-time" },
+        "span_s": { "type": "integer", "minimum": 0 },
+        "missing_s": { "type": "integer", "minimum": 0, "description": "Seconds within the span with no value." },
+        "coverage_pct": {
+          "description": "Percentage of the span that has a value.",
+          "type": "number",
+          "minimum": 0,
+          "maximum": 100
+        },
+        "longest_gap_s": { "type": "integer", "minimum": 0 },
+        "gaps": {
+          "description": "Individual gaps, each classified.",
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["start_utc", "end_utc", "kind"],
+            "properties": {
+              "start_utc": { "type": "string", "format": "date-time" },
+              "end_utc": { "type": "string", "format": "date-time" },
+              "seconds": { "type": "integer", "minimum": 0 },
+              "kind": {
+                "description": "source_silent = the source wrote no records at all during the gap (e.g. a pause); field_missing = records kept coming but this field was absent (a real dropout, e.g. HR strap lost).",
+                "type": "string",
+                "enum": ["source_silent", "field_missing"]
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

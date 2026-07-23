@@ -1,0 +1,149 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://action-data.dev/schemas/manifest.schema.json",
+  "title": "ADP manifest",
+  "description": "Root of an Action-data package (adp.manifest.json). Self-describing index of the package's logical parts, each resolvable from any storage back-end (BYOS). Carries no service metadata (owner/visibility/status live in the hosting service, not the package).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["adp_version", "session_ref", "generated_utc", "producer", "parts", "tiers"],
+  "properties": {
+    "adp_version": {
+      "description": "ADP format version this manifest conforms to.",
+      "type": "string",
+      "pattern": "^[0-9]+\\.[0-9]+$"
+    },
+    "session_ref": {
+      "description": "Stable UUID of the logical activity. Survives the user appending new raw data later; identical across every part of this package.",
+      "type": "string",
+      "format": "uuid"
+    },
+    "generated_utc": {
+      "description": "When this manifest was generated (UTC, ISO 8601).",
+      "type": "string",
+      "format": "date-time"
+    },
+    "producer": { "$ref": "#/$defs/producer" },
+    "timezone": {
+      "description": "IANA timezone the activity was recorded in (e.g. Europe/Helsinki). Local-time context only; all timestamps in the package are UTC.",
+      "type": "string"
+    },
+    "refine_version": {
+      "description": "Version of the refine/merge process that produced the layer-2 canonical parts.",
+      "type": "string"
+    },
+    "scrub": { "$ref": "#/$defs/scrub" },
+    "parts": {
+      "description": "The logical parts that make up the package.",
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/part" }
+    },
+    "tiers": {
+      "description": "Packaging tiers: which parts belong to the shareable 'light' core vs the 'heavy' layer-1 originals. Values are `part` names present in parts[].",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["light", "heavy"],
+      "properties": {
+        "light": {
+          "description": "Shareable scrubbed core, egresses by default: typically session, timeline, geo, provenance, clips.",
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "heavy": {
+          "description": "Layer-1 originals, usually stay at origin: typically raw, video.",
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "producer": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "version"],
+      "properties": {
+        "name": { "type": "string", "description": "Producer pipeline name, e.g. randomfinnrides-pipeline." },
+        "version": { "type": "string" }
+      }
+    },
+    "scrub": {
+      "description": "Record of privacy/scrubbing applied when producing the egressing (layer-2/3) parts.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["applied"],
+      "properties": {
+        "applied": { "type": "boolean", "description": "Whether any scrubbing was applied." },
+        "profile": { "type": "string", "description": "Named scrub profile used, e.g. 'share-default'." },
+        "removed": {
+          "description": "Human-readable list of what was removed/generalized (e.g. 'home-radius GPS start/end', 'device serials').",
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      }
+    },
+    "part": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["part", "layer", "role", "location", "format"],
+      "properties": {
+        "part": {
+          "description": "Logical part name, unique within the manifest (e.g. session, timeline, geo, provenance, clips, raw, video, or an enrichment id).",
+          "type": "string"
+        },
+        "layer": {
+          "description": "Which of the 3 layers this part belongs to (1 raw, 2 refined canonical, 3 enrichment).",
+          "type": "integer",
+          "enum": [1, 2, 3]
+        },
+        "role": {
+          "description": "Semantic role of the part; drives which per-part schema validates its payload.",
+          "type": "string",
+          "enum": ["session", "timeline", "geo", "provenance", "clips", "enrichment", "raw", "video"]
+        },
+        "location": { "$ref": "#/$defs/location" },
+        "format": {
+          "description": "Concrete on-storage format, e.g. json, parquet, geojson, gpx, fit, mp4.",
+          "type": "string"
+        },
+        "fallback": {
+          "description": "Optional alternate representation of the same logical part (e.g. a csv mirror of a parquet timeline).",
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["format", "key"],
+          "properties": {
+            "format": { "type": "string" },
+            "key": { "type": "string", "description": "Storage key of the fallback, within the same store as `location`." }
+          }
+        },
+        "bytes": {
+          "description": "Size of the part's payload in bytes (omitted when not yet materialized).",
+          "type": "integer",
+          "minimum": 0
+        },
+        "hash": {
+          "description": "Content hash of the part's bytes, algorithm-prefixed (e.g. 'sha256:...'). Enables integrity checks and dedup across stores.",
+          "type": "string",
+          "pattern": "^[a-z0-9]+:[0-9a-fA-F]+$"
+        }
+      }
+    },
+    "location": {
+      "description": "Where the part's bytes live. BYOS: any part may come from a different store.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["store", "key"],
+      "properties": {
+        "store": {
+          "description": "'default' = service default store; 'byos:<alias>' = user-supplied store resolved out-of-band; 'cold' = archival storage (may need rehydration).",
+          "type": "string",
+          "pattern": "^(default|cold|byos:[a-z0-9][a-z0-9_-]*)$"
+        },
+        "key": {
+          "description": "Object key / path of the part within `store`.",
+          "type": "string"
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,132 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://action-data.dev/schemas/enrichment.schema.json",
+  "title": "ADP enrichment part (layer 3)",
+  "description": "One additive, attributed enrichment anchored to the session. Everything in layer 3 carries attribution (who made it, first- or third-party, trust). A clip is the first-class enrichment object: a time range + intent + labels that references a video asset and the timeline (NOT a footage copy).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["enrichment_id", "session_ref", "anchor", "kind", "attribution", "payload"],
+  "properties": {
+    "enrichment_id": {
+      "description": "Unique id of this enrichment within the package.",
+      "type": "string"
+    },
+    "session_ref": {
+      "description": "UUID of the logical activity this enriches.",
+      "type": "string",
+      "format": "uuid"
+    },
+    "anchor": {
+      "description": "What span of the session this enrichment is attached to.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type"],
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": ["utc_range", "clip_ref", "whole_session"]
+        },
+        "start_utc": { "type": "string", "format": "date-time", "description": "Required when type = utc_range." },
+        "end_utc": { "type": "string", "format": "date-time", "description": "Required when type = utc_range." },
+        "clip_ref": { "type": "string", "description": "Referenced clip's enrichment_id, when type = clip_ref." }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "type": { "const": "utc_range" } } },
+          "then": { "required": ["start_utc", "end_utc"] }
+        },
+        {
+          "if": { "properties": { "type": { "const": "clip_ref" } } },
+          "then": { "required": ["clip_ref"] }
+        }
+      ]
+    },
+    "kind": {
+      "description": "What kind of enrichment this is. Open set; known kinds enumerated. 'clip' selects the clip payload contract below.",
+      "type": "string",
+      "examples": ["weather", "osm_difficulty", "external_metric", "clip", "clip_labels", "segment", "motor_assist"]
+    },
+    "attribution": {
+      "description": "Who produced this enrichment and how much to trust it. Required on every layer-3 part.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["author", "author_kind", "produced_utc"],
+      "properties": {
+        "author": { "type": "string", "description": "Human/service/agent that produced this." },
+        "author_kind": {
+          "type": "string",
+          "enum": ["first_party", "third_party"]
+        },
+        "produced_utc": { "type": "string", "format": "date-time" },
+        "source": { "type": "string", "description": "Upstream data source, e.g. 'openweathermap', 'osm', model name." },
+        "version": { "type": "string" },
+        "trust": {
+          "type": "string",
+          "enum": ["unverified", "self", "reviewed"],
+          "description": "unverified = ingested as-is; self = producer vouches; reviewed = independently reviewed."
+        }
+      }
+    },
+    "payload": {
+      "description": "Kind-specific body. Free-form for most kinds; when kind = 'clip' it SHOULD match the clip contract in $defs/clip.",
+      "type": "object"
+    }
+  },
+
+  "allOf": [
+    {
+      "if": { "properties": { "kind": { "const": "clip" } }, "required": ["kind"] },
+      "then": { "properties": { "payload": { "$ref": "#/$defs/clip" } } }
+    }
+  ],
+
+  "$defs": {
+    "clip": {
+      "title": "Clip payload",
+      "description": "First-class clip: one or more time ranges + intent + labels/tags/description/derived metrics, referencing a video asset and the timeline. Not a copy of the footage.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["ranges", "video_ref"],
+      "properties": {
+        "ranges": {
+          "description": "Time range(s) this clip spans, on the canonical UTC timeline. Multiple ranges allow a stitched/highlight clip.",
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["start_utc", "end_utc"],
+            "properties": {
+              "start_utc": { "type": "string", "format": "date-time" },
+              "end_utc": { "type": "string", "format": "date-time" }
+            }
+          }
+        },
+        "video_ref": {
+          "description": "Reference to the video asset this clip is cut from (a part name / asset id, NOT embedded footage).",
+          "type": "string"
+        },
+        "intent": {
+          "description": "Why the clip exists (free text, e.g. 'gnarly rock garden', 'PB segment').",
+          "type": "string"
+        },
+        "labels": {
+          "description": "Structured labels/tags.",
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "description": { "type": "string" },
+        "derived_metrics": {
+          "description": "Metrics computed over the clip's range (open set, e.g. max_speed_ms, avg_hr_bpm). These are convenience aggregates carried with the clip.",
+          "type": "object",
+          "additionalProperties": { "type": ["number", "string", "boolean", "null"] }
+        },
+        "direction": {
+          "description": "OPTIONAL playback direction. live-trails uses it (POV forward/reverse), rfr does not. Omit when not applicable.",
+          "type": "string",
+          "enum": ["forward", "reverse"]
+        }
+      }
+    }
+  }
+}

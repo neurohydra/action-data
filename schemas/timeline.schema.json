@@ -1,0 +1,88 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://action-data.dev/schemas/timeline.schema.json",
+  "title": "ADP timeline ROW (layer 2)",
+  "description": "Schema for ONE row of the 1 Hz UTC canonical timeline. In practice the timeline is stored column-wise as parquet (see schemas/README.md); this schema documents the per-row/per-column contract. Rows are on a strict 1 s UTC grid spanning the union of all sources. The ONLY required field is time_utc: every telemetry column is nullable/optional because a given second may predate a source, fall in a dropout, or be a filled/interpolated slot.",
+  "type": "object",
+  "required": ["time_utc"],
+  "properties": {
+    "time_utc": {
+      "description": "Row timestamp on the 1 Hz UTC grid (ISO 8601, UTC). The one guaranteed field.",
+      "type": "string",
+      "format": "date-time"
+    },
+
+    "lat": {
+      "description": "Canonical latitude (WGS84). NULLABLE: null where no source had a fix this second (dropout or pre/post source span).",
+      "type": ["number", "null"],
+      "minimum": -90,
+      "maximum": 90
+    },
+    "lon": {
+      "description": "Canonical longitude (WGS84). NULLABLE, same as lat.",
+      "type": ["number", "null"],
+      "minimum": -180,
+      "maximum": 180
+    },
+    "alt_m": {
+      "description": "Canonical altitude, metres.",
+      "type": ["number", "null"]
+    },
+    "speed_ms": {
+      "description": "Canonical speed, metres/second.",
+      "type": ["number", "null"],
+      "minimum": 0
+    },
+    "hr_bpm": {
+      "description": "Canonical heart rate, beats/minute.",
+      "type": ["number", "null"],
+      "minimum": 0
+    },
+    "power_w": {
+      "description": "Canonical power, watts.",
+      "type": ["number", "null"]
+    },
+    "cadence_rpm": {
+      "description": "Canonical cadence, revolutions/minute.",
+      "type": ["number", "null"],
+      "minimum": 0
+    },
+    "distance_m": {
+      "description": "Cumulative distance, metres.",
+      "type": ["number", "null"],
+      "minimum": 0
+    },
+    "moving": {
+      "description": "Moving/stationary flag for this second. Nullable where undetermined.",
+      "type": ["boolean", "null"]
+    },
+
+    "grit": {
+      "description": "Garmin Grit — vendor-special metric promoted to a bare canonical column.",
+      "type": ["number", "null"]
+    },
+    "flow": {
+      "description": "Garmin Flow — vendor-special metric promoted to a bare canonical column.",
+      "type": ["number", "null"]
+    }
+  },
+
+  "patternProperties": {
+    "^[a-z0-9]+_raw$": {
+      "description": "Per-source row-level presence flag: true = this second is a real sample from <source>, false = interpolated/filled/absent. E.g. garmin_raw, bosch_raw.",
+      "type": ["boolean", "null"]
+    },
+    "^[a-z0-9]+_(lat|lon)$": {
+      "description": "Per-source shadow GPS column preserving <source>'s own fix even when canonical lat/lon picked another source. E.g. bosch_lat, bosch_lon.",
+      "type": ["number", "null"]
+    },
+    "^[a-z0-9]+_(alt_m|speed_ms|hr_bpm|power_w|cadence_rpm|distance_m)$": {
+      "description": "Per-source shadow metric column (<source>_<metric>) preserving the original per-source value. Units are fixed in the suffix (_m, _ms, _bpm, _w, _rpm). E.g. bosch_hr_bpm, garmin_alt_m, bosch_speed_ms.",
+      "type": ["number", "null"]
+    }
+  },
+
+  "additionalProperties": true,
+
+  "$comment": "additionalProperties is true because the canonical set plus per-source shadow/flag columns is open-ended across devices; patternProperties document and constrain the <source>_<metric>, <source>_<lat|lon>, and <source>_raw families. Only time_utc is required."
+}
