@@ -2,7 +2,15 @@
 
 All notable changes to the ADP reference tooling and schemas.
 
-## [Unreleased]
+## [1.0] - 2026-07-24
+
+ADP format **locked to v1** following acceptance of live-trails **ADR-0036**
+(ADP = canonical package format, superseding RidePackage v0). `adp_version` is
+now `1.0`. Both v1-gating open items were resolved first: raw-only package
+decided **NO** (raw is a processing input, not a terminal package — see
+`docs/decisions/raw-only-package.md`), and store-alias resolution + canonical
+`clips.schema.json` completed (below). RidePackage v0 remains available as a
+regenerable consumer projection via `adp project --to ridepackage-v0`.
 
 ### Added
 - **`schemas/clips.schema.json`** (draft 2020-12) — canonical, sport-neutral
